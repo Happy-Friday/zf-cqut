@@ -1,0 +1,4 @@
+package: zf
+import:
+- package: github.com/PuerkitoBio/goquery
+- package: github.com/axgle/mahonia
