@@ -13,12 +13,8 @@ import (
 	"fmt"
 )
 
-/**
-Todo :
-1. Get response of courses
-2. Get response of all grades
-3. Get response of plans
- */
+var WrongPwdOrName = errors.New("密码或者账号错误")
+
 const (
 	GET       = "GET"
 	POST      = "POST"
@@ -36,16 +32,16 @@ const (
 )
 
 const (
-	BtnZcj   = "btn_zcj" //list all lesson's grades include grade point
-	BtnXq    = "btn_xq"  //list all lesson's grades by term
-	BtnXn    = "btn_xn"  //list all lesson's grades by year
-	BtnCount = "Button1" //count grades by year and term
+	BtnZcj   = "btn_zcj" //列出历年的成绩
+	BtnXq    = "btn_xq"  //列出学期成绩
+	BtnXn    = "btn_xn"  //列出学年成绩
+	BtnCount = "Button1" //列出成绩统计
 )
 
 type cqutQuery struct {
 	username string
 	password string
-	terms []string
+	terms    []string
 	*cqut
 }
 
@@ -57,13 +53,24 @@ func newCqutQuery(username, password string) *cqutQuery {
 	}
 }
 
-func (c *cqutQuery) initialize() {
+func (c *cqutQuery) initialize() error {
 	log.Println("start to login system.....")
-	c.login(c.username, c.password)
+	doc, err := c.login(c.username, c.password);
+	if err != nil {
+		return err
+	}
+	if _, ok := doc.Find("input[name=lt]").Attr("value"); ok {
+		return WrongPwdOrName
+	}
 	log.Println("start to load Jwxt cookie.....")
-	c.loginJwxt()
+	if err := c.loginJwxt(); err != nil {
+		return err
+	}
 	log.Println("start to load Xgxt cookie.....")
-	c.loginXgxt()
+	if err := c.loginXgxt(); err != nil {
+		return err
+	}
+	return nil
 }
 
 //模拟MVC将csrf标签保存在map里面
@@ -85,6 +92,7 @@ func (c *cqutQuery) updateJwxtTokens(rep *http.Response) (*goquery.Document, err
 	}
 	return doc, nil
 }
+
 //生成一个含有上一次请求的csrf数据的表单
 func (c *cqutQuery) formValues() url.Values {
 	return url.Values{
@@ -97,6 +105,7 @@ func (c *cqutQuery) formValues() url.Values {
 //用于获取查询当前学期的课程，并且初始化__VIEWSTATE
 //这个方法必须在queryCoursesNoPre之前调用
 func (c *cqutQuery) queryCoursesPre() (*goquery.Document, error) {
+	log.Println("invoke queryCoursesPre")
 	req := commonRequest(GET, c.jwxtLinks["courses"], nil)
 	rep, err := c.client.Do(req)
 	if err != nil {
@@ -105,8 +114,10 @@ func (c *cqutQuery) queryCoursesPre() (*goquery.Document, error) {
 
 	return c.updateJwxtTokens(rep)
 }
+
 //查询指定学年和学期的课表, 这之前必须得调用queryCoursesPre初始化__VIEWSTATE
 func (c *cqutQuery) queryCoursesNoPre(year, term string) (*goquery.Document, error) {
+	log.Println("invoke queryCoursesNoPre")
 	v := c.formValues()
 	//设置学年
 	v.Set("xnd", year)
@@ -120,8 +131,10 @@ func (c *cqutQuery) queryCoursesNoPre(year, term string) (*goquery.Document, err
 
 	return c.updateJwxtTokens(rep)
 }
+
 //查询指定学年和学期的课表，并且自动进行预处理
-func (c *cqutQuery) queryCoursesWithPre(year, term string)(*goquery.Document, error) {
+func (c *cqutQuery) queryCoursesWithPre(year, term string) (*goquery.Document, error) {
+	log.Println("invoke queryCoursesWithPre")
 	c.queryCoursesPre()
 	return c.queryCoursesNoPre(year, term)
 }
@@ -130,6 +143,7 @@ func (c *cqutQuery) queryCoursesWithPre(year, term string)(*goquery.Document, er
 //你必须在queryGradesDetail之前调用
 //return
 func (c *cqutQuery) queryGrades() (*goquery.Document, error) {
+	log.Println("invoke queryCoursesGrades")
 	req := commonRequest(GET, c.jwxtLinks["grades"], nil)
 	rep, err := c.client.Do(req)
 	if err != nil {
@@ -141,6 +155,7 @@ func (c *cqutQuery) queryGrades() (*goquery.Document, error) {
 
 //查询指定学期的成绩
 func (c *cqutQuery) queryGradesDetail(year, term string) (*goquery.Document, error) {
+	log.Println("invoke queryCoursesGradesDetail")
 	v := c.formValues()
 	//设置学年
 	v.Set("ddlxn", year)
@@ -156,12 +171,13 @@ func (c *cqutQuery) queryGradesDetail(year, term string) (*goquery.Document, err
 
 	return c.updateJwxtTokens(rep)
 }
+
 //在预加载成绩统计的时候顺便获取学生的学期
 func (c *cqutQuery) setTerms(doc *goquery.Document) {
 	if c.terms == nil {
 		c.terms = make([]string, 0)
 		doc.Find("#ddlXN option").Each(func(i int, s *goquery.Selection) {
-			if attr, ok := s.Attr("value"); ok && !isEmpty(attr){
+			if attr, ok := s.Attr("value"); ok && !isEmpty(attr) {
 				c.terms = append(c.terms, attr)
 			}
 		})
@@ -171,6 +187,7 @@ func (c *cqutQuery) setTerms(doc *goquery.Document) {
 //QueryCountPre is way to  get the token called __VIEWSTATE
 //You must invoke it before invoking QueryCount first
 func (c *cqutQuery) queryCountPre() (*goquery.Document, error) {
+	log.Println("invoke queryCountPre")
 	req := commonRequest(GET, c.jwxtLinks["count"], nil)
 
 	rep, err := c.client.Do(req)
@@ -195,6 +212,7 @@ func (c *cqutQuery) queryCountPre() (*goquery.Document, error) {
 // 	params[2] term of query
 //  params[3] type of lession's property
 func (c *cqutQuery) queryCountNoPre(params ...string) (*goquery.Document, error) {
+	log.Println("invoke queryCounNoPre")
 	v := c.formValues()
 	v.Set("ddl_kcxz", "");
 	v.Set("ddlXQ", "");
@@ -223,6 +241,7 @@ func (c *cqutQuery) queryCountNoPre(params ...string) (*goquery.Document, error)
 }
 
 func (c *cqutQuery) queryCountWithPre(params ...string) (*goquery.Document, error) {
+	log.Println("invoke queryCountWithPre")
 	c.queryCountPre()
 	return c.queryCountNoPre(params...)
 }
@@ -241,6 +260,7 @@ func (c *cqutQuery) querySqid() (string, bool) {
 }
 
 func (c *cqutQuery) queryUserInfo() (*goquery.Document, *goquery.Document, error) {
+	log.Println("invoke querySqid")
 	sqid, exist := c.querySqid()
 	if !exist {
 		return nil, nil, errors.New("Not found Sqid")
@@ -249,7 +269,7 @@ func (c *cqutQuery) queryUserInfo() (*goquery.Document, *goquery.Document, error
 		doc1 *goquery.Document
 		doc2 *goquery.Document
 	)
-
+	log.Println("request XgxtInfoNoSqid")
 	u := fmt.Sprintf("%s%d", XgxtInfoNoSqid, time.Now().Nanosecond())
 	req := commonRequest(POST, u, strings.NewReader(url.Values{"xh": {c.username}}.Encode()))
 	rep, err := c.client.Do(req)
@@ -258,7 +278,8 @@ func (c *cqutQuery) queryUserInfo() (*goquery.Document, *goquery.Document, error
 	}
 	doc1, _ = goquery.NewDocumentFromResponse(rep)
 
-	if strings.TrimSpace(sqid) != "" {
+	if !isEmpty(sqid) {
+		log.Println("request XgxtInfoWithSqid")
 		u = fmt.Sprintf("%s%d", XgxtInfoWithSqid, time.Now().Nanosecond())
 		req = commonRequest(POST, u, strings.NewReader(url.Values{"sqid": {sqid}}.Encode()))
 		rep, err = c.client.Do(req)
@@ -285,7 +306,8 @@ func newCqut() *cqut {
 	jar, _ := cookiejar.New(nil)
 	return &cqut{
 		client: &http.Client{
-			Jar: jar,
+			Jar:     jar,
+			Timeout: 5e9,
 		},
 		jwxtTokens: url.Values{},
 	}
@@ -335,7 +357,7 @@ func (c *cqut) loadLoginCookie2() (string, bool) {
 
 //Login the server to get the import cookie
 //Must set Reference, or you cannot get right result
-func (c *cqut) login(username, password string) (*http.Response, error) {
+func (c *cqut) login(username, password string) (*goquery.Document, error) {
 	log.Println("load cookie1")
 	c.loadLoginCookie1()
 	log.Println("load cookie2")
@@ -365,7 +387,7 @@ func (c *cqut) login(username, password string) (*http.Response, error) {
 		return nil, err
 	}
 	c.ticket = rep.Request.URL.Query().Get("ticket")
-	return rep, nil
+	return goquery.NewDocumentFromResponse(rep)
 }
 
 //登陆教务系统，获取cookies，并且截取重要的链接

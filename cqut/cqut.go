@@ -3,6 +3,7 @@ package cqut
 import (
 	"github.com/PuerkitoBio/goquery"
 	"strings"
+	"encoding/json"
 )
 
 //Cqut 格式化的教务系统数据获取器
@@ -18,19 +19,20 @@ func NewCqut(username, password string) *Cqut {
 }
 
 //Initialize 初始化请求,以用来登陆
-func (c *Cqut) Initialize() {
-	c.query.initialize()
+func (c *Cqut) Initialize() error{
+	return c.query.initialize()
 }
 
 //返回筛选表格得到的map数据
-func tableOfGrades(doc *goquery.Document) []map[string]string {
+func formatGradesTable(doc *goquery.Document) []map[string]string {
 	if doc == nil {
 		return nil
 	}
 
 	var attrs []string
 	infos := make([]map[string]string, 0)
-	doc.Find("#divNotPs tbody tr").Each(func(i int, s *goquery.Selection) {
+	//ps: 在#divNotPs下面还有一个表单,不要找tbody
+	doc.Find("#divNotPs .datelist tr").Each(func(i int, s *goquery.Selection) {
 		if s.HasClass("datelisthead") {
 			s.Find("td").Each(func(i int, s *goquery.Selection) {
 				attrs = append(attrs, DecodeGbk(s.Text()))
@@ -41,9 +43,9 @@ func tableOfGrades(doc *goquery.Document) []map[string]string {
 				v := s.Text()
 				if strings.TrimSpace(v) != "" {
 					info[attrs[i]] = DecodeGbk(v)
-					infos = append(infos, info)
 				}
 			})
+			infos = append(infos, info)
 		}
 	})
 	return infos
@@ -79,11 +81,11 @@ func (c *Cqut) GetGrades(pre bool, params ...string) []map[string]string {
 		doc, _ = c.query.queryCountNoPre(BtnXq, params[0], params[1]);
 	case 1:
 		doc, _ = c.query.queryCountNoPre(BtnXn, params[0])
-	case 0:
+	default:
 		doc, _ = c.query.queryCountNoPre(BtnZcj)
 	}
 
-	return tableOfGrades(doc)
+	return formatGradesTable(doc)
 }
 
 //GetGradesPoint 获取某一学年的绩点
@@ -99,7 +101,7 @@ func (c *Cqut) GetGradesPoint(pre bool, params ...string) (string, error) {
 	switch len(params) {
 	case 1:
 		doc, err = c.query.queryCountNoPre(BtnCount, params[0]);
-	case 0:
+	default:
 		doc, err = c.query.queryCountNoPre(BtnCount)
 	}
 	if err != nil {
@@ -126,7 +128,7 @@ func (c *Cqut) GetGradesPoints(pre bool) map[string]interface{} {
 }
 
 //分析学生的课表，生成对应的map
-func tableOfCourses(doc *goquery.Document) map[string]interface{} {
+func formatCoursesTable(doc *goquery.Document) map[string]interface{} {
 	ct := make(map[string]interface{})
 	lessons := make([][]string, 7)
 	doc.Find("#Table1 tr").Each(func(i int, s *goquery.Selection) {
@@ -174,9 +176,7 @@ func tableOfCourses(doc *goquery.Document) map[string]interface{} {
         ["星期6的课程列表"],
         ["星期日的课程列表"],
     ]
-
 	Or
-
 	{
 	"lesson":[
 		nil,nil,nil,nil,nil,nil,nil
@@ -194,9 +194,7 @@ func (c *Cqut) GetCoursesTable(pre bool, params ...string) map[string]interface{
 	switch len(params) {
 	case 2:
 		doc, err = c.query.queryCoursesNoPre(params[0], params[1])
-	case 1:
-		fallthrough
-	case 0:
+	default:
 		doc, err = c.query.queryCoursesPre()
 	}
 
@@ -204,5 +202,59 @@ func (c *Cqut) GetCoursesTable(pre bool, params ...string) map[string]interface{
 		return nil
 	}
 
-	return tableOfCourses(doc)
+	return formatCoursesTable(doc)
+}
+
+//格式化不使用sqid的查询结果
+func formatUserInfo1(doc *goquery.Document) map[string]interface{} {
+	text := DecodeGbk(doc.Text())
+	var tInfos map[string]interface{}
+	json.Unmarshal([]byte(text), &tInfos)
+	if tInfos == nil {
+		return nil
+	}
+	infos := make(map[string]interface{})
+	//for _, k := range infosAttrs {
+	//	infos[k] = tInfos[k]
+	//}
+	for k, v := range tInfos {
+		if v != nil {
+			infos[k] = v
+		}
+	}
+	return infos
+}
+
+//格式化使用sqid的查询结果，并和之前的结果相结合
+func formatUserInfo2(doc *goquery.Document, infos map[string]interface{}) map[string]interface{} {
+	text := DecodeGbk(doc.Text())
+	var tInfos []map[string]interface{}
+	json.Unmarshal([]byte(text), &tInfos)
+	//log.Println(tInfos)
+	if tInfos == nil {
+		return nil
+	}
+	for _, tInfo := range tInfos {
+		infos[tInfo["zd"].(string)] = tInfo["zdz"]
+	}
+	return infos
+}
+
+//GetUserInfo 获取用户的个人详细信息
+func (c *Cqut) GetUserInfo() map[string]interface{} {
+	doc1, doc2, err := c.query.queryUserInfo()
+	if err != nil {
+		return nil
+	}
+
+	infos := formatUserInfo1(doc1)
+	if infos == nil {
+		return nil
+	}
+
+	if doc2 != nil {
+		formatUserInfo2(doc2, infos)
+	}
+
+	return infos
 }
