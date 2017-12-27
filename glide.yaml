@@ -2,3 +2,5 @@ package: zf
 import:
 - package: github.com/PuerkitoBio/goquery
 - package: github.com/axgle/mahonia
+- package: github.com/json-iterator/go
+  version: ^1.0.4

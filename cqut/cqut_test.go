@@ -19,6 +19,7 @@ func stringJson(m interface{}) string {
 	return string(buf)
 }
 
+
 func TestGrades(t *testing.T) {
 	c := NewCqut(USERNAME, PASSWORD)
 	if err := c.Initialize(); err != nil {

@@ -32,16 +32,20 @@ const (
 )
 
 const (
-	BtnZcj   = "btn_zcj" //列出历年的成绩
-	BtnXq    = "btn_xq"  //列出学期成绩
-	BtnXn    = "btn_xn"  //列出学年成绩
-	BtnCount = "Button1" //列出成绩统计
+	BtnZcj    = "btn_zcj" //列出历年的成绩
+	BtnXq     = "btn_xq"  //列出学期成绩
+	BtnXn     = "btn_xn"  //列出学年成绩
+	BtnCount  = "Button1" //列出成绩统计
 )
 
+/**
+	请求各个功能的结构，内置cqut
+	尽量重复使用，和充分利用预处理， 减少HTTP请求次数
+ */
 type cqutQuery struct {
 	username string
 	password string
-	terms    []string
+	years    []string
 	*cqut
 }
 
@@ -53,6 +57,10 @@ func newCqutQuery(username, password string) *cqutQuery {
 	}
 }
 
+/*
+	初始化数字化校园、教务系统、学工系统的基础cookie
+	返回的错误主要包括 用户名密码错误 和 连接超时
+ */
 func (c *cqutQuery) initialize() error {
 	log.Println("start to login system.....")
 	doc, err := c.login(c.username, c.password);
@@ -73,7 +81,15 @@ func (c *cqutQuery) initialize() error {
 	return nil
 }
 
-//模拟MVC将csrf标签保存在map里面
+/*
+	拟MVC将csrf标签保存在map里面
+	HTML Form 格式
+	<form method="post" action="xxx">
+		<input type="hidden" name="__EVENTTARGET" value=""/>
+		<input type="hidden" name="__EVENTARGUMENT" value=""/>
+		<input type="hidden" name="__VIEWSTATE" value=""/>
+	</form>
+ */
 func (c *cqutQuery) updateJwxtTokens(rep *http.Response) (*goquery.Document, error) {
 	doc, err := goquery.NewDocumentFromResponse(rep);
 	if err != nil {
@@ -174,11 +190,11 @@ func (c *cqutQuery) queryGradesDetail(year, term string) (*goquery.Document, err
 
 //在预加载成绩统计的时候顺便获取学生的学期
 func (c *cqutQuery) setTerms(doc *goquery.Document) {
-	if c.terms == nil {
-		c.terms = make([]string, 0)
+	if c.years == nil {
+		c.years = make([]string, 0)
 		doc.Find("#ddlXN option").Each(func(i int, s *goquery.Selection) {
 			if attr, ok := s.Attr("value"); ok && !isEmpty(attr) {
-				c.terms = append(c.terms, attr)
+				c.years = append(c.years, attr)
 			}
 		})
 	}
@@ -246,6 +262,12 @@ func (c *cqutQuery) queryCountWithPre(params ...string) (*goquery.Document, erro
 	return c.queryCountNoPre(params...)
 }
 
+/*
+	查询用户表单的sqid值
+	sqid目前猜测应该是用户信息的另外一个存储位置的id
+	当sqid为空的时候, 用户信息全部在XgxtInfoNoSqid中
+	否则, 一部分在XgxtInfoNoSqid中，一部分在XgxtInfoWithSqid中，需要合并
+*/
 func (c *cqutQuery) querySqid() (string, bool) {
 	req := commonRequest(POST, "http://xgxt.i.cqut.edu.cn/xgxt/xsxx_xsxxxg_xgsq.do", nil)
 	rep, err := c.client.Do(req)
@@ -259,6 +281,13 @@ func (c *cqutQuery) querySqid() (string, bool) {
 	return doc.Find("input[name=shzSqid]").Attr("value")
 }
 
+/*
+	获取用户信息的查询器
+	return
+		[0] *goquery.Document XgxtInfoNoSqid的查询值
+		[1] *goquery.Document XgxtInfoWithSqid的查询值
+		[2] error 错误信息
+ */
 func (c *cqutQuery) queryUserInfo() (*goquery.Document, *goquery.Document, error) {
 	log.Println("invoke querySqid")
 	sqid, exist := c.querySqid()
@@ -292,8 +321,10 @@ func (c *cqutQuery) queryUserInfo() (*goquery.Document, *goquery.Document, error
 	return doc1, doc2, err
 }
 
-//cqut is a embedded struct to load import cookies at initialization time
-//import cookie include cookie of login、jwxt、xgxt
+/*
+	cqut用于初始化教务系统、学工系统、数字化校园cookie
+	将数字化校园的cookie作为第三方cookie传递给教务系统学工系统,获取各自域名下的cookie
+ */
 type cqut struct {
 	client     *http.Client
 	ticket     string

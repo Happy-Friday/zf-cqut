@@ -4,31 +4,61 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"strings"
 	"encoding/json"
+	"log"
+	"sync"
 )
+
+//需要计算的学期
+var terms = []string{"1", "2"}
 
 //Cqut 格式化的教务系统数据获取器
 type Cqut struct {
+	//因为有csrf机制的存在，不能并发的访问教务系统的数据
+	//添加一个互斥锁，防止并发时同时请求
+	jwxt  *sync.Mutex
 	query *cqutQuery
+	//Info  *User
 }
 
 //NewCqut创建一个Cqut数据获取对象
 func NewCqut(username, password string) *Cqut {
 	return &Cqut{
+		//Info:  NewUser(username, password),
+		jwxt:  &sync.Mutex{},
 		query: newCqutQuery(username, password),
 	}
 }
 
 //Initialize 初始化请求,以用来登陆
-func (c *Cqut) Initialize() error{
+func (c *Cqut) Initialize() error {
 	return c.query.initialize()
 }
+
+//func (c *Cqut) GetGrades(force bool, pre bool, params ...string) []map[string]string {
+//	grades := c.Info.GradesCount["grades"]
+//	if grades == nil || force {
+//		tgrades := c.getGrades(pre, params...)
+//		c.Info.GradesCount["grades"] = tgrades
+//		return tgrades
+//	}
+//	return grades.([]map[string]string)
+//}
+//
+//func (c *Cqut) GetGradesPoints(force bool, pre bool, params ...string) map[string]interface{} {
+//	gps := c.Info.GradesCount["gps"]
+//	if gps == nil || force {
+//		tgps := c.getGradesPoints(pre)
+//		c.Info.GradesCount["gps"] = tgps
+//		return tgps
+//	}
+//	return gps.(map[string]interface{})
+//}
 
 //返回筛选表格得到的map数据
 func formatGradesTable(doc *goquery.Document) []map[string]string {
 	if doc == nil {
 		return nil
 	}
-
 	var attrs []string
 	infos := make([]map[string]string, 0)
 	//ps: 在#divNotPs下面还有一个表单,不要找tbody
@@ -72,6 +102,9 @@ params[1]学期
 	]
 */
 func (c *Cqut) GetGrades(pre bool, params ...string) []map[string]string {
+	c.jwxt.Lock()
+	defer c.jwxt.Unlock()
+
 	var doc *goquery.Document
 	if pre {
 		c.query.queryCountPre()
@@ -92,37 +125,52 @@ func (c *Cqut) GetGrades(pre bool, params ...string) []map[string]string {
 //pre 是否进预处理
 //params[0]学年
 //params[1]学期
-func (c *Cqut) GetGradesPoint(pre bool, params ...string) (string, error) {
+func (c *Cqut) GetGradesPoint(pre bool, params ...string) (map[string]string, error) {
 	var doc *goquery.Document
 	var err error
 	if pre {
 		c.query.queryCountPre()
 	}
 	switch len(params) {
+	case 2:
+		doc, err = c.query.queryCountNoPre(BtnCount, params[0], params[1]);
 	case 1:
 		doc, err = c.query.queryCountNoPre(BtnCount, params[0]);
 	default:
 		doc, err = c.query.queryCountNoPre(BtnCount)
 	}
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	gp := DecodeGbk(doc.Find("#pjxfjd").Text())
 	gp = gp[strings.LastIndex(gp, "：")+len("："):]
-	return gp, nil
+	xfgpsum := DecodeGbk(doc.Find("#xfjdzh").Text())
+	xfgpsum = xfgpsum[strings.LastIndex(xfgpsum, "：")+len("："):]
+	return map[string]string{
+		"gp":      gp,
+		"xfgpsum": xfgpsum,
+	}, nil
 }
 
 //GetGradesPoint 获取某一学生所有学年的绩点
 //pre 是否进预处理
 func (c *Cqut) GetGradesPoints(pre bool) map[string]interface{} {
+	c.jwxt.Lock()
+	defer c.jwxt.Unlock()
+
 	gps := make(map[string]interface{})
 	if pre {
 		c.query.queryCountPre()
 	}
-	for _, term := range c.query.terms {
-		if gp, err := c.GetGradesPoint(false, term); err == nil {
-			gps[term] = gp
+	for _, year := range c.query.years {
+		tgp := make([]map[string]string, len(terms))
+		for i, term := range terms {
+			if gp, err := c.GetGradesPoint(false, year, term); err == nil {
+				tgp[i] = gp
+			}
 		}
+		log.Println(tgp)
+		gps[year] = tgp
 	}
 	return gps
 }
@@ -157,7 +205,7 @@ func formatCoursesTable(doc *goquery.Document) map[string]interface{} {
 			})
 		}
 	})
-	ct["lessons"] = lessons
+	ct["coursesTable"] = lessons
 	return ct
 }
 
@@ -185,6 +233,8 @@ func formatCoursesTable(doc *goquery.Document) map[string]interface{} {
 }
 */
 func (c *Cqut) GetCoursesTable(pre bool, params ...string) map[string]interface{} {
+	c.jwxt.Lock()
+	defer c.jwxt.Unlock()
 	var doc *goquery.Document
 	var err error
 	if pre {
@@ -214,9 +264,6 @@ func formatUserInfo1(doc *goquery.Document) map[string]interface{} {
 		return nil
 	}
 	infos := make(map[string]interface{})
-	//for _, k := range infosAttrs {
-	//	infos[k] = tInfos[k]
-	//}
 	for k, v := range tInfos {
 		if v != nil {
 			infos[k] = v
@@ -230,7 +277,6 @@ func formatUserInfo2(doc *goquery.Document, infos map[string]interface{}) map[st
 	text := DecodeGbk(doc.Text())
 	var tInfos []map[string]interface{}
 	json.Unmarshal([]byte(text), &tInfos)
-	//log.Println(tInfos)
 	if tInfos == nil {
 		return nil
 	}
