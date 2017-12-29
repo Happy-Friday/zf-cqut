@@ -4,7 +4,6 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"strings"
 	"encoding/json"
-	"log"
 	"sync"
 	"io/ioutil"
 )
@@ -19,6 +18,10 @@ type Cqut struct {
 	jwxt  *sync.Mutex
 	query *cqutQuery
 	//Info  *User
+}
+
+func SetLogOk(ok bool) {
+	logOk = ok
 }
 
 //NewCqut创建一个Cqut数据获取对象
@@ -110,7 +113,7 @@ func (c *Cqut) GetGrades(pre bool, params ...string) []map[string]string {
 //params[1]学期
 //成功返回 map[string]string
 //失败返回 nil
-func (c *Cqut) GetGradesPoint(pre bool, params ...string) (map[string]string, error) {
+func (c *Cqut) GetGradesPoint(pre bool, params ...string) map[string]string {
 	c.jwxt.Lock()
 	defer c.jwxt.Unlock()
 
@@ -128,7 +131,7 @@ func (c *Cqut) GetGradesPoint(pre bool, params ...string) (map[string]string, er
 		doc, err = c.query.queryCountNoPre(BtnCount)
 	}
 	if err != nil {
-		return nil, err
+		return nil
 	}
 	gp := DecodeGbk(doc.Find("#pjxfjd").Text())
 	gp = gp[strings.LastIndex(gp, "：")+len("："):]
@@ -137,7 +140,7 @@ func (c *Cqut) GetGradesPoint(pre bool, params ...string) (map[string]string, er
 	return map[string]string{
 		"gp":      gp,
 		"xfgpsum": xfgpsum,
-	}, nil
+	}
 }
 
 //GetGradesPoint 获取某一学生所有学年的绩点
@@ -152,11 +155,9 @@ func (c *Cqut) GetGradesPoints(pre bool) map[string]interface{} {
 	for _, year := range c.query.years {
 		tgp := make([]map[string]string, len(terms))
 		for i, term := range terms {
-			if gp, err := c.GetGradesPoint(false, year, term); err == nil {
-				tgp[i] = gp
-			}
+			gp := c.GetGradesPoint(false, year, term);
+			tgp[i] = gp
 		}
-		log.Println(tgp)
 		gps[year] = tgp
 	}
 	return gps

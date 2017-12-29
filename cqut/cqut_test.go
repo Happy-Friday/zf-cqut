@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	USERNAME = ""
-	PASSWORD = ""
+	USERNAME = "11503080410"
+	PASSWORD = "qijudemeng123"
 )
 
 func stringJson(m interface{}) string {
@@ -23,6 +23,7 @@ func stringJson(m interface{}) string {
 
 
 func TestGrades(t *testing.T) {
+	SetLogOk(true)
 	c := NewCqut(USERNAME, PASSWORD)
 	if err := c.Initialize(); err != nil {
 		t.Error(err)
@@ -98,6 +99,5 @@ func TestGetPhoto(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	//log.Println(c.GetPhoto("11503080410"))
 	ioutil.WriteFile("img.gif", c.GetPhoto(), os.ModePerm)
 }
