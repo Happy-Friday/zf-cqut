@@ -51,6 +51,10 @@ type cqutQuery struct {
 	*cqut
 }
 
+func SetLogOk(ok bool) {
+	logOk = ok
+}
+
 func newCqutQuery(username, password string) *cqutQuery {
 	return &cqutQuery{
 		username: username,

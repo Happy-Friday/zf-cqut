@@ -20,9 +20,7 @@ type Cqut struct {
 	//Info  *User
 }
 
-func SetLogOk(ok bool) {
-	logOk = ok
-}
+
 
 //NewCqut创建一个Cqut数据获取对象
 func NewCqut(username, password string) *Cqut {

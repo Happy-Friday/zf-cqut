@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	USERNAME = "11503080410"
-	PASSWORD = "qijudemeng123"
+	USERNAME = ""
+	PASSWORD = ""
 )
 
 func stringJson(m interface{}) string {
