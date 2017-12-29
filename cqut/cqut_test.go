@@ -4,6 +4,8 @@ import (
 	"testing"
 	"encoding/json"
 	"log"
+	"io/ioutil"
+	"os"
 )
 
 var (
@@ -87,4 +89,15 @@ func TestAllInfos(t *testing.T) {
 		"cs" : cs,
 	}
 	log.Println(stringJson(m))
+}
+
+func TestGetPhoto(t *testing.T) {
+	c := NewCqut(USERNAME, PASSWORD)
+	err := c.Initialize()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	//log.Println(c.GetPhoto("11503080410"))
+	ioutil.WriteFile("img.gif", c.GetPhoto(), os.ModePerm)
 }

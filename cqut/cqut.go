@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"io/ioutil"
 )
 
 //需要计算的学期
@@ -33,26 +34,6 @@ func NewCqut(username, password string) *Cqut {
 func (c *Cqut) Initialize() error {
 	return c.query.initialize()
 }
-
-//func (c *Cqut) GetGrades(force bool, pre bool, params ...string) []map[string]string {
-//	grades := c.Info.GradesCount["grades"]
-//	if grades == nil || force {
-//		tgrades := c.getGrades(pre, params...)
-//		c.Info.GradesCount["grades"] = tgrades
-//		return tgrades
-//	}
-//	return grades.([]map[string]string)
-//}
-//
-//func (c *Cqut) GetGradesPoints(force bool, pre bool, params ...string) map[string]interface{} {
-//	gps := c.Info.GradesCount["gps"]
-//	if gps == nil || force {
-//		tgps := c.getGradesPoints(pre)
-//		c.Info.GradesCount["gps"] = tgps
-//		return tgps
-//	}
-//	return gps.(map[string]interface{})
-//}
 
 //返回筛选表格得到的map数据
 func formatGradesTable(doc *goquery.Document) []map[string]string {
@@ -100,6 +81,8 @@ params[1]学期
         "辅修标记": "0"
     },....
 	]
+	失败返回
+		nil
 */
 func (c *Cqut) GetGrades(pre bool, params ...string) []map[string]string {
 	c.jwxt.Lock()
@@ -121,11 +104,16 @@ func (c *Cqut) GetGrades(pre bool, params ...string) []map[string]string {
 	return formatGradesTable(doc)
 }
 
-//GetGradesPoint 获取某一学年的绩点
+//GetGradesPoint 获取某一学年、学期的绩点和绩点学分总和
 //pre 是否进预处理
 //params[0]学年
 //params[1]学期
+//成功返回 map[string]string
+//失败返回 nil
 func (c *Cqut) GetGradesPoint(pre bool, params ...string) (map[string]string, error) {
+	c.jwxt.Lock()
+	defer c.jwxt.Unlock()
+
 	var doc *goquery.Document
 	var err error
 	if pre {
@@ -154,10 +142,9 @@ func (c *Cqut) GetGradesPoint(pre bool, params ...string) (map[string]string, er
 
 //GetGradesPoint 获取某一学生所有学年的绩点
 //pre 是否进预处理
+//成功返回 map[string]interface{}
+//失败返回 nil
 func (c *Cqut) GetGradesPoints(pre bool) map[string]interface{} {
-	c.jwxt.Lock()
-	defer c.jwxt.Unlock()
-
 	gps := make(map[string]interface{})
 	if pre {
 		c.query.queryCountPre()
@@ -176,6 +163,8 @@ func (c *Cqut) GetGradesPoints(pre bool) map[string]interface{} {
 }
 
 //分析学生的课表，生成对应的map
+//成功返回 map[string]interface{}
+//失败返回 nil
 func formatCoursesTable(doc *goquery.Document) map[string]interface{} {
 	ct := make(map[string]interface{})
 	lessons := make([][]string, 7)
@@ -230,6 +219,8 @@ func formatCoursesTable(doc *goquery.Document) map[string]interface{} {
 		nil,nil,nil,nil,nil,nil,nil
 	]
 	}
+
+	失败返回 nil
 }
 */
 func (c *Cqut) GetCoursesTable(pre bool, params ...string) map[string]interface{} {
@@ -287,6 +278,8 @@ func formatUserInfo2(doc *goquery.Document, infos map[string]interface{}) map[st
 }
 
 //GetUserInfo 获取用户的个人详细信息
+//成功返回 map[string]interface{}
+//失败返回 nil
 func (c *Cqut) GetUserInfo() map[string]interface{} {
 	doc1, doc2, err := c.query.queryUserInfo()
 	if err != nil {
@@ -303,4 +296,22 @@ func (c *Cqut) GetUserInfo() map[string]interface{} {
 	}
 
 	return infos
+}
+
+//GetPhoto 获取照片
+//params[0] 查询学号
+//成功返回 []byte照片数据
+//失败返回 nil
+func (c *Cqut) GetPhoto(params ...string) []byte {
+	rep, err := c.query.queryPhoto(params...)
+	if err != nil {
+		return nil
+	}
+
+	buf, err := ioutil.ReadAll(rep.Body)
+	if err != nil {
+		return nil
+	}
+
+	return buf
 }

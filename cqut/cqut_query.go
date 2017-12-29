@@ -27,15 +27,16 @@ const (
 	Login            = "http://i.cqut.edu.cn/zfca/login?service=http%3A%2F%2Fi.cqut.edu.cn%2Fportal.do"
 	JwxtLink         = "http://i.cqut.edu.cn/zfca?yhlx=student&login=0122579031373493728&url=xs_main.aspx"
 	XgxtLink         = "http://i.cqut.edu.cn/zfca?yhlx=student&login=122579031373493679&url=stuPage.jsp"
+	XgxtPhoto        = "http://xgxt.i.cqut.edu.cn/xgxt/xsxx_xsgl.do?method=showPhoto&xh="
 	XgxtInfoNoSqid   = "http://xgxt.i.cqut.edu.cn/xgxt/xsxx_xsxxxg.do?method=xgsq&type=query&timestamp="
 	XgxtInfoWithSqid = "http://xgxt.i.cqut.edu.cn/xgxt/xsxx_xsxxxg.do?method=getXgzdList&timestamp="
 )
 
 const (
-	BtnZcj    = "btn_zcj" //列出历年的成绩
-	BtnXq     = "btn_xq"  //列出学期成绩
-	BtnXn     = "btn_xn"  //列出学年成绩
-	BtnCount  = "Button1" //列出成绩统计
+	BtnZcj   = "btn_zcj" //列出历年的成绩
+	BtnXq    = "btn_xq"  //列出学期成绩
+	BtnXn    = "btn_xn"  //列出学年成绩
+	BtnCount = "Button1" //列出成绩统计
 )
 
 /**
@@ -188,7 +189,7 @@ func (c *cqutQuery) queryGradesDetail(year, term string) (*goquery.Document, err
 	return c.updateJwxtTokens(rep)
 }
 
-//在预加载成绩统计的时候顺便获取学生的学期
+//在预加载成绩统计的时候顺便获取学生的学年
 func (c *cqutQuery) setTerms(doc *goquery.Document) {
 	if c.years == nil {
 		c.years = make([]string, 0)
@@ -319,6 +320,18 @@ func (c *cqutQuery) queryUserInfo() (*goquery.Document, *goquery.Document, error
 	}
 
 	return doc1, doc2, err
+}
+
+func (c *cqutQuery) queryPhoto(params ...string) (*http.Response, error) {
+	var uri string
+
+	if len(params) == 0 {
+		uri = fmt.Sprintf("%s%s", XgxtPhoto, c.username)
+	} else {
+		uri = fmt.Sprintf("%s%s", XgxtPhoto, params[0])
+	}
+	req := commonRequest(GET, uri, nil)
+	return c.client.Do(req)
 }
 
 /*
